@@ -1,5 +1,12 @@
 matplotlib
 torch
 torchvision
+torchaudio
 numpy
 scipy
+tqdm
+cuda-python
+mkl-static
+mkl-include
+networkx
+numba
