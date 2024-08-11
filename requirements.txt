@@ -10,3 +10,5 @@ mkl-static
 mkl-include
 networkx
 numba
+pillow
+pandas
