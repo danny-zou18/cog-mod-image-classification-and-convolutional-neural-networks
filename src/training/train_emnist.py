@@ -4,32 +4,44 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
+import torch.nn.functional as F
+
 
 # Define the neural network model
 class CNNModel(nn.Module):
-    def __init__(self, num_classes=47):  # Default to 47 classes, adjust if necessary
+    def __init__(self, num_classes=62):  # Change this to 62
         super(CNNModel, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        self.fc1 = nn.Linear(64 * 7 * 7, 128)
-        self.fc2 = nn.Linear(128, num_classes)  # Adjust output layer
-        self.dropout = nn.Dropout(0.25)
-        self.relu = nn.ReLU()
+        # Define the layers here
+        self.conv1 = nn.Conv2d(1, num_classes, kernel_size=5)  # First convolutional layer
+        self.conv2 = nn.Conv2d(num_classes, num_classes*2, kernel_size=5) # Second convolutional layer
+        self.fc1 = nn.Linear(num_classes * 2 * 4 * 4, num_classes * 4)         # First fully-connected layer
+        self.fc2 = nn.Linear(num_classes * 4, num_classes)        # Final ouptu layer
 
     def forward(self, x):
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 7 * 7)
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return x
+        # first convolutional layer
+        h_conv1 = self.conv1(x)
+        h_conv1 = F.relu(h_conv1)
+        h_conv1_pool = F.max_pool2d(h_conv1, 2)
+
+        # second convolutional layer
+        h_conv2 = self.conv2(h_conv1_pool)
+        h_conv2 = F.relu(h_conv2)
+        h_conv2_pool = F.max_pool2d(h_conv2, 2)
+
+        # fully-connected layer
+        h_fc1 = h_conv2_pool.view(-1, num_classes * 2 * 4 * 4)
+        h_fc1 = self.fc1(h_fc1)
+        h_fc1 = F.relu(h_fc1)
+
+        # classifier output
+        output = self.fc2(h_fc1)
+        output = F.log_softmax(output,dim=1)
+        return output, h_fc1, h_conv2, h_conv1
 
 # Set up training parameters
-batch_size = 64
+batch_size = 1000
 learning_rate = 0.001
-epochs = 10
+epochs = 20
 
 # Define data transformations
 transform = transforms.Compose([
@@ -41,8 +53,8 @@ transform = transforms.Compose([
 train_dataset = datasets.EMNIST(root='./data', split='byclass', train=True, download=True, transform=transform)
 test_dataset = datasets.EMNIST(root='./data', split='byclass', train=False, download=True, transform=transform)
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 # Determine the number of classes
 num_classes = len(train_dataset.classes)
@@ -67,7 +79,7 @@ for epoch in range(epochs):
         optimizer.zero_grad()  # Zero the parameter gradients
 
         # Forward pass
-        outputs = model(inputs)
+        outputs, _, _, _ = model(inputs)
         loss = criterion(outputs, labels)
 
         # Backward pass and optimize
@@ -90,7 +102,7 @@ total = 0
 with torch.no_grad():
     for inputs, labels in test_loader:
         inputs, labels = inputs.to(device), labels.to(device)  # Move inputs and labels to GPU
-        outputs = model(inputs)
+        outputs, _, _, _ = model(inputs)
         _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
